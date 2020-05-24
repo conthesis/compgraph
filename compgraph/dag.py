@@ -16,14 +16,17 @@ class DagTemplateEntry(BaseModel):
 
 class DagTemplate(BaseModel):
     name: str
-    parameters: List[str]
     entries: List[DagTemplateEntry]
 
 
-def trigger_dag_node(*args, **kwargs):
-    name = kwargs.pop("$name")
-    command = kwargs.pop("$command")
-    return {"name": name, "command": command, "params": kwargs, "args": args}
+def trigger_dag_node(*args, entry):
+    name = entry.name
+    command = entry.command
+    dict_args = dict(zip(entry.inputs, args))
+    if command.kind == "identity":
+        return dict_args
+
+    return None
 
 
 def template_to_computable(template: DagTemplate):
@@ -33,7 +36,7 @@ def template_to_computable(template: DagTemplate):
             name=entry.name,
             needs=entry.inputs,
             provides=[entry.name],
-            params={"$name": entry.name, "$command": entry.command},
+            params={"entry": entry},
         )(trigger_dag_node)
         ops.append(op)
     graph = compose(name=template.name)(*ops)

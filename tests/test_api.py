@@ -11,7 +11,6 @@ def test():
     payload = {
         "$Template": {
             "name": "foo",
-            "parameters": ["a"],
             "entries": [
                 {"name": "step1", "inputs": ["a"], "command": {"kind": "identity",}}
             ],
@@ -19,12 +18,4 @@ def test():
         "a": "10",
     }
     res = client.post("/triggerProcess", json=payload)
-    assert res.json() == {
-        "a": "10",
-        "step1": {
-            "args": ["10"],
-            "command": {"kind": "identity"},
-            "name": "step1",
-            "params": {},
-        },
-    }
+    assert res.json() == {"a": "10", "step1": {"a": "10"}}
