@@ -15,6 +15,7 @@ fastapi = "*"
 uvicorn = "*"
 orjson = "*"
 httpx = "*"
+graphkit = "*"
 
 [requires]
 python_version = "3.8"
