@@ -1,12 +1,27 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Union
 from dataclasses import dataclass
 from pydantic import BaseModel
 from graphkit import compose, operation
 
+from compgraph.commands import identity
+
+import httpx
+
+http_client = httpx.AsyncClient()
+
+
+class DummyCommand(BaseModel):
+    dummy: str
+    dummy_2: int
+
+
+class HttpCommand(BaseModel):
+    url: str
+
 
 class DagCommand(BaseModel):
     kind: str
-    url: str
+    properties: Optional[Union[DummyCommand, HttpCommand]]
 
 
 class DagTemplateEntry(BaseModel):
@@ -21,13 +36,17 @@ class DagTemplate(BaseModel):
 
 
 def trigger_dag_node(*args, entry):
-    name = entry.name
-    command = entry.command
-    dict_args = dict(zip(entry.inputs, args))
-    if command.kind == "identity":
-        return dict_args
+    infused_inputs = dict(zip(entry.inputs, args))
 
-    return None
+    if entry.command.kind == "identity":
+        return identity(infused_inputs)
+
+    if entry.command.kind == "http":
+        body = {"data": infused_inputs}
+        resp = http_client.post(url=entry.command.properties.url, json=body)
+        resp.raise_for_status()
+        resp.json()
+        return resp.json()
 
 
 def template_to_computable(template: DagTemplate):

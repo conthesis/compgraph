@@ -1,20 +1,18 @@
-import httpx
 from typing import Dict, Any
 from fastapi import FastAPI, Response
 import compgraph.dag
 
 app = FastAPI()
-http_client = httpx.AsyncClient()
 
 TEMPLATE_FIELD = "$Template"
 
 
-@app.post("/run_command")
-async def run_command(entry: compgraph.dag.DagTemplateEntry):
-    body = {'inputs': entry.inputs}
-    resp = await http_client.post(url=entry.command.url, json=body)
-    resp.raise_for_status()
-    return resp
+# @app.post("/run_command")
+# async def run_command(cc: dag.CommandCall):
+#     body = {"input_data": cc.input_data}
+#     resp = await http_client.post(url=cc.url, json=body)
+#     resp.raise_for_status()
+#     return resp
 
 
 @app.post("/triggerProcess")
