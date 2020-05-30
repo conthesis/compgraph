@@ -6,6 +6,7 @@ from graphkit import compose, operation
 
 class DagCommand(BaseModel):
     kind: str
+    url: str
 
 
 class DagTemplateEntry(BaseModel):
