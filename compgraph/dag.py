@@ -7,7 +7,7 @@ from compgraph.commands import identity
 
 import httpx
 
-http_client = httpx.AsyncClient()
+http_client = httpx.Client()
 
 
 class DummyCommand(BaseModel):
@@ -42,11 +42,11 @@ def trigger_dag_node(*args, entry):
         return identity(infused_inputs)
 
     if entry.command.kind == "http":
-        body = {"data": infused_inputs}
-        resp = http_client.post(url=entry.command.properties.url, json=body)
+        resp = http_client.post(url=entry.command.properties.url, json=infused_inputs)
         resp.raise_for_status()
-        resp.json()
         return resp.json()
+
+    return None
 
 
 def template_to_computable(template: DagTemplate):

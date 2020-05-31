@@ -1,8 +1,10 @@
 from typing import Dict, Any
 from fastapi import FastAPI, Response
 import compgraph.dag
+import compgraph.commands
 
 app = FastAPI()
+app.include_router(compgraph.commands.router)
 
 TEMPLATE_FIELD = "$Template"
 
