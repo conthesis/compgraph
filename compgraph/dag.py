@@ -2,32 +2,14 @@ from typing import List, Dict, Any, Optional, Union
 from dataclasses import dataclass
 from pydantic import BaseModel
 from graphkit import compose, operation
-
-from compgraph.commands import identity
-
 import httpx
 
 http_client = httpx.Client()
 
-
-class DummyCommand(BaseModel):
-    dummy: str
-    dummy_2: int
-
-
-class HttpCommand(BaseModel):
-    url: str
-
-
-class DagCommand(BaseModel):
-    kind: str
-    properties: Optional[Union[DummyCommand, HttpCommand]]
-
-
 class DagTemplateEntry(BaseModel):
     name: str
     inputs: List[str]
-    command: DagCommand
+    action: str
 
 
 class DagTemplate(BaseModel):
@@ -35,18 +17,35 @@ class DagTemplate(BaseModel):
     entries: List[DagTemplateEntry]
 
 
-def trigger_dag_node(*args, entry):
+
+async def await_dict(d):
+    return {k: await d for (k, v) in d.items()}
+
+
+
+async def perform_dag_step(inputs, entry):
+    inputs = await await_dict(inputs)
+    res = await http_client.post("http://actions:8000/internal/compute", json={ kind: entry.action, properties: infused_inputs })
+    res.raise_for_status()
+    return await res.json()
+
+
+async def trigger_dag_node(*args, entry):
     infused_inputs = dict(zip(entry.inputs, args))
+    coro = perform_dag_step(infused_inputs, entry)
+    return asyncio.create_task(coro)
 
-    if entry.command.kind == "identity":
-        return identity(infused_inputs)
 
-    if entry.command.kind == "http":
-        resp = http_client.post(url=entry.command.properties.url, json=infused_inputs)
-        resp.raise_for_status()
-        return resp.json()
+def mkfuture(val):
+    f = asyncio.get_event_loop().create_future()
+    f.set_result(val)
+    return f
 
-    return None
+async def graph_runner(graph):
+    async def inner(**kwargs):
+        future_args = { k: mkfuture(v) for (k, v) in kwargs.items() }
+        return await await_dict(graph(future_args))
+    return inner
 
 
 def template_to_computable(template: DagTemplate):
@@ -60,10 +59,9 @@ def template_to_computable(template: DagTemplate):
         )(trigger_dag_node)
         ops.append(op)
     graph = compose(name=template.name)(*ops)
-    return graph
+    return graph_runner(graph)
 
 
 def build_dag(x: Dict[str, Any]):
-
     template = DagTemplate.parse_obj(x)
     return template_to_computable(template)
