@@ -11,8 +11,8 @@ TEMPLATE_FIELD = "$Template"
 async def trigger_dag(data: Dict[str, Any]):
     data = dict(data)
     template = data.pop(TEMPLATE_FIELD)
-    computable = build_dag(template)
-    return computable(data)
+    computable = await build_dag(template)
+    return await computable(data)
 
 
 @app.on_event("shutdown")

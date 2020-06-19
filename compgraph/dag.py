@@ -1,4 +1,6 @@
+import asyncio
 from typing import List, Dict, Any, Optional, Union
+import inspect
 from dataclasses import dataclass
 from pydantic import BaseModel
 from graphkit import compose, operation
@@ -19,7 +21,7 @@ class DagTemplate(BaseModel):
 
 
 async def await_dict(d):
-    return {k: await d for (k, v) in d.items()}
+    return {k: await v if inspect.isawaitable(v) else v for (k, v) in d.items()}
 
 
 
@@ -42,8 +44,8 @@ def mkfuture(val):
     return f
 
 async def graph_runner(graph):
-    async def inner(**kwargs):
-        future_args = { k: mkfuture(v) for (k, v) in kwargs.items() }
+    async def inner(data):
+        future_args = { k: mkfuture(v) for (k, v) in data.items() }
         return await await_dict(graph(future_args))
     return inner
 
