@@ -25,15 +25,24 @@ async def await_dict(d):
 
 
 
+def inputs_to_property_list(data: dict):
+    for (k, v) in data.values():
+        yield {
+            'name': k,
+            'kind': "LITERAL",
+            "value": v
+        }
+
+
 async def perform_dag_step(inputs, entry):
-    inputs = await await_dict(inputs)
-    res = await http_client.post("http://actions:8000/internal/compute", json={ kind: entry.action, properties: infused_inputs })
+    properties = list(inputs_to_property_list(inputs))
+    res = await http_client.post("http://actions:8000/internal/compute", json={ kind: entry.action, properties:  properties })
     res.raise_for_status()
     return await res.json()
 
 
 async def trigger_dag_node(*args, entry):
-    infused_inputs = dict(zip(entry.inputs, args))
+    infused_inputs = await await_dict(dict(zip(entry.inputs, args)))
     coro = perform_dag_step(infused_inputs, entry)
     return asyncio.create_task(coro)
 
