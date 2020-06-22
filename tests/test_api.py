@@ -1,9 +1,6 @@
-import uuid
-
 from fastapi.testclient import TestClient
 
-from compgraph import main
-from compgraph import dag
+from compgraph import dag, main
 
 client = TestClient(main.app)
 
@@ -26,14 +23,14 @@ def test_url_command():
     data = {
         "name": "foo",
         "entries": [
-            {"name": "step1",
-             "inputs": ["a,b"],
-             "command":
-                {
-                 "kind": "http",
-                 "properties": {"url": "http://127.0.0.1:8000/add"}
-                }
-             }
+            {
+                "name": "step1",
+                "inputs": ["a,b"],
+                "command": {
+                    "kind": "http",
+                    "properties": {"url": "http://127.0.0.1:8000/add"},
+                },
+            }
         ],
     }
     data_parsed = dag.DagTemplate.parse_obj(data)
@@ -46,18 +43,18 @@ def test_add():
         "$Template": {
             "name": "foo",
             "entries": [
-                {"name": "step1",
-                 "inputs": ["a", "b"],
-                 "command":
-                    {
-                     "kind": "http",
-                     "properties": {"url": "http://127.0.0.1:8000/add"}
-                    }
+                {
+                    "name": "step1",
+                    "inputs": ["a", "b"],
+                    "command": {
+                        "kind": "http",
+                        "properties": {"url": "http://127.0.0.1:8000/add"},
+                    },
                 }
             ],
         },
         "a": 10,
-        "b": 20
+        "b": 20,
     }
     res = client.post("/triggerProcess", json=payload)
     assert res.json() == {"a": 10, "b": 20, "step1": 30}
