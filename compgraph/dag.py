@@ -29,16 +29,6 @@ def inputs_to_property_list(data: dict):
         yield {"name": k, "kind": "LITERAL", "value": v}
 
 
-async def perform_dag_step(inputs, entry):
-    properties = list(inputs_to_property_list(inputs))
-    res = await http_client.post(
-        "http://actions:8000/internal/compute",
-        json={kind: entry.action, properties: properties},
-    )
-    res.raise_for_status()
-    return await res.json()
-
-
 async def trigger_dag_node(*args, entry, nc):
     infused_inputs = await await_dict(dict(zip(entry.inputs, args)))
     body = {
