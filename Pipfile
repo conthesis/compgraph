@@ -10,11 +10,11 @@ requests = "*"
 happier = "*"
 
 [packages]
-fastapi = "*"
-uvicorn = "*"
 orjson = "*"
 httpx = "*"
 graphkit = "*"
+asyncio-nats-client = "*"
+pydantic = "*"
 
 [requires]
 python_version = "3.8"

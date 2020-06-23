@@ -2,11 +2,11 @@ import asyncio
 import inspect
 from typing import Any, Dict, List
 
-import httpx
+import orjson
 from graphkit import compose, operation
 from pydantic import BaseModel
 
-http_client = httpx.Client()
+ACTION_TOPIC = "conthesis.actions.literal"
 
 
 class DagTemplateEntry(BaseModel):
@@ -39,9 +39,16 @@ async def perform_dag_step(inputs, entry):
     return await res.json()
 
 
-async def trigger_dag_node(*args, entry):
+async def trigger_dag_node(*args, entry, nc):
     infused_inputs = await await_dict(dict(zip(entry.inputs, args)))
-    coro = perform_dag_step(infused_inputs, entry)
+    body = {
+        kind: entry.action,
+        properties: [
+            {"name": k, "value": v, "kind": "LITERAL",}
+            for (k, v) in infused_inputs.values()
+        ],
+    }
+    coro = nc.request(ACTION_TOPIC, orjson.dumps(body))
     return asyncio.create_task(coro)
 
 
@@ -59,20 +66,20 @@ async def graph_runner(graph):
     return inner
 
 
-def template_to_computable(template: DagTemplate):
+def template_to_computable(template: DagTemplate, nc):
     ops = []
     for entry in template.entries:
         op = operation(
             name=entry.name,
             needs=entry.inputs,
             provides=[entry.name],
-            params={"entry": entry},
+            params={"entry": entry, "nc": nc},
         )(trigger_dag_node)
         ops.append(op)
     graph = compose(name=template.name)(*ops)
     return graph_runner(graph)
 
 
-def build_dag(x: Dict[str, Any]):
+def build_dag(x: Dict[str, Any], nc):
     template = DagTemplate.parse_obj(x)
-    return template_to_computable(template)
+    return template_to_computable(template, nc)

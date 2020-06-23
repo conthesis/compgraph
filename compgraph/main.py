@@ -1,28 +1,53 @@
-from typing import Any, Dict
+import asyncio
+import os
+import traceback
 
-from fastapi import FastAPI
+import orjson
+from nats.aio.client import Client as NATS
 
 from .dag import build_dag
 
-app = FastAPI()
-
 TEMPLATE_FIELD = "$Template"
+
+ACTION_TOPIC = "conthesis.action.TriggerDAG"
 
 
 class DAGService:
     def __init__(self):
-        pass
+        self.nc = NATS()
+        self.shutdown_f = asyncio.get_running_loop().create_future()
+
+    async def wait_for_shutdown(self):
+        await self.shutdown_f
 
     async def shutdown(self):
-        pass
+        try:
+            await self.nc.drain()
+        finally:
+            self.shutdown_f.set_result(True)
 
     async def setup(self):
-        pass
+        await self.nc.connect(os.environ["NATS_URL"])
+        await self.nc.subscribe(ACTION_TOPIC, cb=self.handle_msg)
+
+    async def reply(self, msg, data):
+        reply = msg.reply
+        if reply:
+            serialized = orjson.dumps(data)
+            await self.nc.publish(reply, serialized)
+
+    async def handle_msg(self, msg):
+        try:
+            data = orjson.loads(msg.data)
+            template = data.pop(TEMPLATE_FIELD)
+            computable = await build_dag(template, self.nc)
+            res = await computable(data)
+            await self.reply(msg, res)
+        except Exception:
+            traceback.print_exc()
 
 
-@app.post("/triggerProcess")
-async def trigger_dag(data: Dict[str, Any]):
-    data = dict(data)
-    template = data.pop(TEMPLATE_FIELD)
-    computable = await build_dag(template)
-    return await computable(data)
+async def main():
+    ds = DAGService()
+    await ds.setup()
+    await ds.wait_for_shutdown()

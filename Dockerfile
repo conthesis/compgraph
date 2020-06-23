@@ -1,8 +1,7 @@
-FROM tiangolo/uvicorn-gunicorn-fastapi:python3.8
-
+FROM python:3.8
+RUN pip3 install pipenv
 COPY Pipfile Pipfile.lock /app/
 WORKDIR /app
-RUN pip install pipenv
-RUN pipenv install --system --deploy
+RUN pipenv install --three --deploy --ignore-pipfile
 COPY compgraph /app/compgraph
-CMD ["uvicorn", "--host", "0.0.0.0", "compgraph.main:app"]
+CMD ["pipenv", "run", "python", "-u", "-m", "compgraph"]
