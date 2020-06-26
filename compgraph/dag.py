@@ -32,12 +32,17 @@ def inputs_to_property_list(data: dict):
 async def trigger_dag_node(*args, entry, nc):
     infused_inputs = await await_dict(dict(zip(entry.inputs, args)))
     body = {
-        kind: entry.action,
-        properties: [
-            {"name": k, "value": v, "kind": "LITERAL",}
-            for (k, v) in infused_inputs.values()
-        ],
+        meta: {"TriggeredBy": "compgraph",},
+        action_source: "LITERAL",
+        action: {
+            kind: entry.action,
+            properties: [
+                {"name": k, "value": v, "kind": "LITERAL",}
+                for (k, v) in infused_inputs.values()
+            ],
+        },
     }
+
     coro = nc.request(ACTION_TOPIC, orjson.dumps(body))
     return asyncio.create_task(coro)
 
