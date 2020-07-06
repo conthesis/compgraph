@@ -5,7 +5,7 @@ import traceback
 import orjson
 from nats.aio.client import Client as NATS
 
-from .dag import build_dag
+from dag import Dag
 
 TEMPLATE_FIELD = "$Template"
 
@@ -40,8 +40,8 @@ class DAGService:
         try:
             data = orjson.loads(msg.data)
             template = data.pop(TEMPLATE_FIELD)
-            computable = await build_dag(template, self.nc)
-            res = await computable(data)
+            dag = Dag(template, self.nc)
+            res = await dag.compute(data)
             await self.reply(msg, res)
         except Exception:
             traceback.print_exc()

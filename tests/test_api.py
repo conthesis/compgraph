@@ -1,60 +1,80 @@
-from fastapi.testclient import TestClient
+# from fastapi.testclient import TestClient
+from compgraph.dag import dag
+import pytest
+import asyncio
+import logging
 
-from compgraph import dag, main
 
-client = TestClient(main.app)
-
-
-def test():
+def test_build_dag_error():
     payload = {
-        "$Template": {
-            "name": "foo",
-            "entries": [
-                {"name": "step1", "inputs": ["a"], "command": {"kind": "identity"}}
-            ],
-        },
-        "a": "10",
-    }
-    res = client.post("/triggerProcess", json=payload)
-    assert res.json() == {"a": "10", "step1": {"a": "10"}}
-
-
-def test_url_command():
-    data = {
-        "name": "foo",
-        "entries": [
-            {
-                "name": "step1",
-                "inputs": ["a,b"],
-                "command": {
-                    "kind": "http",
-                    "properties": {"url": "http://127.0.0.1:8000/add"},
-                },
-            }
-        ],
-    }
-    data_parsed = dag.DagTemplate.parse_obj(data)
-    assert type(data_parsed.entries[0].command.properties) == dag.HttpCommand
-    assert data_parsed.entries[0].command.properties.url == "http://127.0.0.1:8000/add"
-
-
-def test_add():
-    payload = {
-        "$Template": {
             "name": "foo",
             "entries": [
                 {
                     "name": "step1",
                     "inputs": ["a", "b"],
-                    "command": {
-                        "kind": "http",
-                        "properties": {"url": "http://127.0.0.1:8000/add"},
-                    },
+                    "action": "eataduck"
+                },
+                {
+                    "name": "step2",
+                    "inputs": ["step2", "b"],
+                    "action": "eataduck",
+                    "dependencies": ["step1, step3"]
                 }
             ],
-        },
-        "a": 10,
-        "b": 20,
-    }
-    res = client.post("/triggerProcess", json=payload)
-    assert res.json() == {"a": 10, "b": 20, "step1": 30}
+        }
+    from nats.aio.client import Client as NATS
+    nc = NATS()
+    with pytest.raises(RuntimeError):
+        dag.Dag(payload, nc)
+
+
+def test_compute_dag():
+    payload = {
+            "name": "foo",
+            "entries": [
+                {
+                    "name": "step1",
+                    "inputs": ["a", "b"],
+                    "action": "na"
+                },
+                {
+                    "name": "step2",
+                    "inputs": ["step1"],
+                    "action": "na",
+                    "dependencies": ["step1"]
+                },
+                {
+                    "name": "step3",
+                    "inputs": ["step1", "b"],
+                    "action": "na",
+                    "dependencies": ["step1"]
+                },
+                {
+                    "name": "step4",
+                    "inputs": ["step3"],
+                    "action": "na",
+                    "dependencies": ["step2"]
+                }
+            ],
+        }
+    inputs = {"a": "na", "b":"na"}
+
+
+    from nats.aio.client import Client as NATS
+    nc = NATS()
+    my_dag = dag.Dag(payload, nc)
+    results = asyncio.run(my_dag.compute(inputs))
+
+    print(results)
+
+    assert my_dag.levels[1][0].name == "step2"
+    assert my_dag.levels[1][1].name == "step3"
+    assert my_dag.levels[2][0].name == "step4"
+
+    assert results['step1'] is not None
+    assert results['step2'] is not None
+    assert results['step3'] is not None
+    assert results['step4'] is not None
+
+
+

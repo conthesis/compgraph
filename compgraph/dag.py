@@ -1,9 +1,8 @@
 import asyncio
-import inspect
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import orjson
-from graphkit import compose, operation
+from nats.aio.client import Client as NATS
 from pydantic import BaseModel
 
 ACTION_TOPIC = "conthesis.actions.literal"
@@ -13,68 +12,124 @@ class DagTemplateEntry(BaseModel):
     name: str
     inputs: List[str]
     action: str
+    dependencies: Optional[List[str]]
+
+    def __hash__(self):
+        return hash(self.name)
 
 
 class DagTemplate(BaseModel):
     name: str
+    # TODO: give DAG its own entry structure and make entries a dict for easier iteration
     entries: List[DagTemplateEntry]
 
 
-async def await_dict(d):
-    return {k: await v if inspect.isawaitable(v) else v for (k, v) in d.items()}
+class Dag:
+    def __init__(self, template: Dict[str, Any], nc: NATS):
+        self.nc = nc
+        template = DagTemplate.parse_obj(template)
+        self.name = template.name
+        self.levels = self._build_levels(template.entries)
+        super(Dag).__init__()
 
+    def _build_levels(self, entries: List[DagTemplateEntry]):
+        levels: List[List[DagTemplateEntry]] = []
+        solved_dependencies: Set[DagTemplateEntry.name] = set()
+        remaining = entries
 
-def inputs_to_property_list(data: dict):
-    for (k, v) in data.values():
-        yield {"name": k, "kind": "LITERAL", "value": v}
+        while len(remaining) != 0:
+            level, remaining, solved_dependencies = self._build_level(
+                remaining, solved_dependencies
+            )
+            if len(level) == 0 and len(remaining) != 0:
+                raise RuntimeError(
+                    "Dag cannot be built, there are dependencies not solved for entries: {}".format(
+                        ", ".join([entry.name for entry in remaining])
+                    )
+                )
+            levels.append(level)
 
+        return levels
 
-async def trigger_dag_node(*args, entry, nc):
-    infused_inputs = await await_dict(dict(zip(entry.inputs, args)))
-    body = {
-        meta: {"TriggeredBy": "compgraph",},
-        action_source: "LITERAL",
-        action: {
-            kind: entry.action,
-            properties: [
-                {"name": k, "value": v, "kind": "LITERAL",}
-                for (k, v) in infused_inputs.values()
-            ],
-        },
-    }
+    def _build_level(
+        self, remaining: List[DagTemplateEntry], solved_dependencies: Set[str]
+    ) -> Tuple[List[DagTemplateEntry], List[DagTemplateEntry], Set[str]]:
+        level, new_remaining = [], []
+        new_solved_dependencies = solved_dependencies.copy()
+        for entry in remaining:
+            if entry.dependencies is None or all(
+                dependency in solved_dependencies for dependency in entry.dependencies
+            ):
+                level.append(entry)
+                new_solved_dependencies.add(entry.name)
+            else:
+                new_remaining.append(entry)
 
-    coro = nc.request(ACTION_TOPIC, orjson.dumps(body))
-    return asyncio.create_task(coro)
+        return level, new_remaining, new_solved_dependencies
 
+    async def compute(self, external_inputs: Dict[str, Any]):
+        # results are inputs for the next level
+        results = external_inputs.copy()
+        for level in self.levels:
+            level_results = await self._compute_level(level, results)
+            print(level_results)
+            # TODO: await?
+            results.update(level_results)
 
-def mkfuture(val):
-    f = asyncio.get_event_loop().create_future()
-    f.set_result(val)
-    return f
+        # TODO: when we introduce map filter on entries insted
+        return dict(filter(lambda x: x[0] not in external_inputs, results.items()))
 
+    async def _get_entry_inputs(
+        self, entry: DagTemplateEntry, level_inputs: Dict[str, Any]
+    ):
+        entry_inputs = dict(
+            filter(lambda x: x[0] in entry.inputs, level_inputs.items())
+        )
+        if all(entry in entry_inputs for entry in entry.inputs) is False:
+            raise RuntimeError(
+                "Entry {} is missing inputs: {}".format(
+                    entry.name,
+                    ", ".join(
+                        [
+                            input_
+                            for input_ in entry.inputs
+                            if input_ not in entry_inputs
+                        ]
+                    ),
+                )
+            )
 
-async def graph_runner(graph):
-    async def inner(data):
-        future_args = {k: mkfuture(v) for (k, v) in data.items()}
-        return await await_dict(graph(future_args))
+        return entry_inputs
 
-    return inner
+    async def _compute_level(
+        self, level: List[DagTemplateEntry], level_inputs: Dict[str, Any]
+    ) -> Dict[DagTemplateEntry, Any]:
+        results = await asyncio.gather(
+            *[
+                self._compute_node(
+                    entry, await self._get_entry_inputs(entry, level_inputs)
+                )
+                for entry in level
+            ]
+        )
 
+        return dict(zip([entry.name for entry in level], results))
 
-def template_to_computable(template: DagTemplate, nc):
-    ops = []
-    for entry in template.entries:
-        op = operation(
-            name=entry.name,
-            needs=entry.inputs,
-            provides=[entry.name],
-            params={"entry": entry, "nc": nc},
-        )(trigger_dag_node)
-        ops.append(op)
-    graph = compose(name=template.name)(*ops)
-    return graph_runner(graph)
+    # async def _compute_node(self, entry, entry_inputs) -> Any:
+    #     await asyncio.sleep(random.randint(0, 3))
+    #     return {entry.name: entry.name}
 
+    async def _compute_node(self, entry, entry_inputs) -> Any:
+        body = {
+            "meta": {"TriggeredBy": "compgraph"},
+            "action_source": "LITERAL",
+            "action": {
+                "kind": entry.action,
+                "properties": [
+                    {"name": k, "value": v, "kind": "LITERAL",}
+                    for (k, v) in entry_inputs.values()
+                ],
+            },
+        }
 
-def build_dag(x: Dict[str, Any], nc):
-    template = DagTemplate.parse_obj(x)
-    return template_to_computable(template, nc)
+        return await self.nc.request(ACTION_TOPIC, orjson.dumps(body))
