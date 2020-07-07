@@ -5,7 +5,7 @@ import traceback
 import orjson
 from nats.aio.client import Client as NATS
 
-from dag import Dag
+from compgraph.dag import Dag
 
 TEMPLATE_FIELD = "$Template"
 

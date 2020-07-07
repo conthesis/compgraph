@@ -1,5 +1,5 @@
 import asyncio
 
-from main import main
+from compgraph.main import main
 
 asyncio.run(main())

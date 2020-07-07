@@ -77,15 +77,13 @@ class Dag:
             results.update(level_results)
 
         # TODO: when we introduce map filter on entries insted
-        return dict(filter(lambda x: x[0] not in external_inputs, results.items()))
+        return {k: v for (k, v) in results.items() if k not in external_inputs}
 
     async def _get_entry_inputs(
         self, entry: DagTemplateEntry, level_inputs: Dict[str, Any]
     ):
-        entry_inputs = dict(
-            filter(lambda x: x[0] in entry.inputs, level_inputs.items())
-        )
-        if all(entry in entry_inputs for entry in entry.inputs) is False:
+        entry_inputs = {k: v for (k, v) in level_inputs.items() if k in entry.inputs}
+        if not all(entry in entry_inputs for entry in entry.inputs):
             raise RuntimeError(
                 "Entry {} is missing inputs: {}".format(
                     entry.name,
@@ -114,10 +112,6 @@ class Dag:
         )
 
         return dict(zip([entry.name for entry in level], results))
-
-    # async def _compute_node(self, entry, entry_inputs) -> Any:
-    #     await asyncio.sleep(random.randint(0, 3))
-    #     return {entry.name: entry.name}
 
     async def _compute_node(self, entry, entry_inputs) -> Any:
         body = {
