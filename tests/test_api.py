@@ -2,7 +2,7 @@
 
 import pytest
 
-from compgraph.dag import dag
+from compgraph.dag import Dag
 
 
 def test_build_dag_error():
@@ -22,7 +22,7 @@ def test_build_dag_error():
 
     nc = NATS()
     with pytest.raises(RuntimeError):
-        dag.Dag(payload, nc)
+        Dag(payload, nc)
 
 
 def test_compute_dag():
@@ -55,7 +55,7 @@ def test_compute_dag():
     from nats.aio.client import Client as NATS
 
     nc = NATS()
-    my_dag = dag.Dag(payload, nc)
+    my_dag = Dag(payload, nc)
     # results = asyncio.run(my_dag.compute(inputs))
 
     assert my_dag.levels[1][0].name == "step2"
